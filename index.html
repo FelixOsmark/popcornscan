@@ -15,6 +15,8 @@
     #reader { width: 100%; border-radius: 10px; overflow: hidden; background: black; }
     .status-box { display: none; padding: 20px; border-radius: 10px; margin-top: 15px; font-weight: bold; }
     button { font-size: 1.1rem; padding: 10px 20px; background: #2ec4b6; border: none; color: white; border-radius: 8px; cursor: pointer; margin-top: 15px; width: 100%; }
+    #restart-btn { background: transparent; border: 1px solid rgba(255,255,255,0.3); font-size: 0.85rem; padding: 7px 14px; margin-top: 10px; color: rgba(255,255,255,0.6); }
+    #restart-btn:active { background: rgba(255,255,255,0.1); }
     .loader { display: none; margin: 15px auto; border: 4px solid rgba(255,255,255,0.3); border-radius: 50%; border-top: 4px solid white; width: 30px; height: 30px; animation: spin 1s linear infinite; }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
   </style>
@@ -24,11 +26,12 @@
   <div class="box" id="main-box">
     <h1>Mama's Corner</h1>
     <p id="info-text">Scan kundens QR-kode</p>
-    
+
     <div id="reader"></div>
-    
+
     <div id="loader" class="loader"></div>
-    <button id="reset-btn" style="display: none;" onclick="resetScanner()">Scan Næste Kupon</button>
+    <button id="reset-btn" style="display: none;" onclick="resetScanner()">Scan næste kupon</button>
+    <button id="restart-btn" onclick="restartCamera()">🔄 Genstart kamera</button>
   </div>
 
   <script>
@@ -37,7 +40,6 @@
     const EDGE_FUNCTION_URL = "https://axfxaclkvdlbjqangori.supabase.co/functions/v1/scan";
     let html5QrcodeScanner;
 
-    // Start kameraet når siden lander
     window.addEventListener('DOMContentLoaded', () => {
       startScanner();
     });
@@ -45,16 +47,24 @@
     function startScanner() {
       html5QrcodeScanner = new Html5Qrcode("reader");
       const config = { fps: 10, qrbox: { width: 250, height: 250 } };
-      
-      // Brug bagerste kamera ("environment")
       html5QrcodeScanner.start({ facingMode: "environment" }, config, onScanSuccess)
-      .catch(err => {
-        document.getElementById('info-text').innerText = "Kunne ikke åbne kamera. Tjek tilladelser.";
+      .catch(() => {
+        document.getElementById('info-text').innerText = "Kunne ikke åbne kamera. Tryk 'Genstart kamera'.";
       });
     }
 
+    function restartCamera() {
+      if (html5QrcodeScanner) {
+        html5QrcodeScanner.clear().catch(() => {}).finally(() => {
+          html5QrcodeScanner = null;
+          startScanner();
+        });
+      } else {
+        startScanner();
+      }
+    }
+
     function onScanSuccess(decodedText) {
-      // Stop kameraet midlertidigt så vi ikke scanner den samme kode 50 gange
       html5QrcodeScanner.stop().then(() => {
         validerKupon(decodedText.trim());
       });
@@ -63,7 +73,7 @@
     function validerKupon(couponId) {
       document.getElementById('reader').style.display = 'none';
       document.getElementById('loader').style.display = 'block';
-      document.getElementById('info-text').innerText = "Tjekker databasen... ⏳";
+      document.getElementById('info-text').innerText = "Tjekker kupon... ⏳";
 
       fetch(EDGE_FUNCTION_URL, {
         method: "POST",
@@ -76,17 +86,17 @@
         document.getElementById('reset-btn').style.display = 'block';
 
         if (data.success && data.status === "APPROVED") {
-          document.body.style.backgroundColor = "#2ec4b6"; // Grøn
+          document.body.style.backgroundColor = "#2ec4b6";
           document.getElementById('info-text').innerHTML = `<strong>GODKENDT! 🍿</strong><br><br>Giv 1 gratis popcorn.<br><br>Kunde: ${data.email || ''}`;
         } else if (data.status === "ALREADY_USED") {
-          document.body.style.backgroundColor = "#ffa500"; // Orange
+          document.body.style.backgroundColor = "#ffa500";
           document.getElementById('info-text').innerHTML = `<strong>ALLEREDE BRUGT ❌</strong><br><br>Blev brugt tidligere.<br><br>Kunde: ${data.email || ''}`;
         } else {
-          document.body.style.backgroundColor = "#ff4d4d"; // Rød
+          document.body.style.backgroundColor = "#ff4d4d";
           document.getElementById('info-text').innerHTML = "<strong>FEJL! 🤔</strong><br><br>Kuponen eksisterer ikke i systemet.";
         }
       })
-      .catch(err => {
+      .catch(() => {
         document.getElementById('loader').style.display = 'none';
         document.getElementById('reset-btn').style.display = 'block';
         document.body.style.backgroundColor = "#ff4d4d";
